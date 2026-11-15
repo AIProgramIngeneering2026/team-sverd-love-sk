@@ -1,0 +1,714 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bookscout.local/schemas/commands.schema.json",
+  "title": "BookScout CLI command protocol",
+  "description": "JSON-команды локального CLI. CLI и PySide6 UI используют один application Dispatcher; HTTP API не предоставляется.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/findBooks"
+    },
+    {
+      "$ref": "#/$defs/createJob"
+    },
+    {
+      "$ref": "#/$defs/getJob"
+    },
+    {
+      "$ref": "#/$defs/cancelJob"
+    },
+    {
+      "$ref": "#/$defs/retryJob"
+    }
+  ],
+  "$defs": {
+    "requestId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "findBooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "request_id",
+        "query"
+      ],
+      "properties": {
+        "command": {
+          "const": "books.find"
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "query": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "isbn"
+              ],
+              "properties": {
+                "isbn": {
+                  "type": "string",
+                  "minLength": 10,
+                  "maxLength": 17
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "title"
+              ],
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "author": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "createJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "request_id",
+        "request_key",
+        "edition"
+      ],
+      "properties": {
+        "command": {
+          "const": "jobs.create"
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "request_key": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Ключ идемпотентности. Повтор с тем же ключом возвращает исходную Job."
+        },
+        "edition": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "isbn"
+              ],
+              "properties": {
+                "isbn": {
+                  "type": "string",
+                  "minLength": 10,
+                  "maxLength": 17,
+                  "description": "ISBN-10 или ISBN-13; Tool проверяет контрольную сумму и нормализует к ISBN-13."
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "edition_id"
+              ],
+              "properties": {
+                "edition_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          ]
+        },
+        "force_refresh": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "getJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "request_id",
+        "job_id"
+      ],
+      "properties": {
+        "command": {
+          "const": "jobs.get"
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "job_id": {
+          "$ref": "#/$defs/jobId"
+        }
+      }
+    },
+    "cancelJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "request_id",
+        "job_id"
+      ],
+      "properties": {
+        "command": {
+          "const": "jobs.cancel"
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "job_id": {
+          "$ref": "#/$defs/jobId"
+        }
+      }
+    },
+    "retryJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "request_id",
+        "job_id",
+        "request_key"
+      ],
+      "properties": {
+        "command": {
+          "const": "jobs.retry"
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "job_id": {
+          "$ref": "#/$defs/jobId"
+        },
+        "request_key": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "force_refresh": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message",
+            "field",
+            "retryable",
+            "details"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "REQUEST_TOO_LARGE",
+                "UNKNOWN_COMMAND",
+                "INVALID_JSON",
+                "VALIDATION_ERROR",
+                "ISBN_REQUIRED",
+                "ISBN_FORMAT_INVALID",
+                "ISBN_CHECKSUM_INVALID",
+                "BOOK_QUERY_INVALID",
+                "BOOK_NOT_FOUND",
+                "BOOK_PROVIDER_TIMEOUT",
+                "BOOK_PROVIDER_UNAVAILABLE",
+                "BOOK_PROVIDER_RESPONSE_INVALID",
+                "EDITION_REQUIRED",
+                "SOURCE_NOT_ALLOWED",
+                "STORE_TIMEOUT",
+                "STORE_UNAVAILABLE",
+                "STORE_RESPONSE_INVALID",
+                "OFFER_URL_REJECTED",
+                "OFFER_EDITION_MISMATCH",
+                "OFFER_PRICE_INVALID",
+                "OFFER_CURRENCY_UNSUPPORTED",
+                "OFFER_NORMALIZATION_FAILED",
+                "JOB_NOT_FOUND",
+                "JOB_TERMINAL",
+                "JOB_INVALID_TRANSITION",
+                "IDEMPOTENCY_KEY_REUSED",
+                "STORAGE_ERROR",
+                "APP_RESTARTED",
+                "INTERNAL_ERROR"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "field": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "details": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "successEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "request_id",
+        "data"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "data": {
+          "type": "object"
+        },
+        "replayed": {
+          "type": "boolean",
+          "description": "Присутствует для идемпотентных jobs.create/jobs.retry."
+        }
+      }
+    },
+    "errorEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message",
+            "field",
+            "retryable",
+            "details"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "REQUEST_TOO_LARGE",
+                "UNKNOWN_COMMAND",
+                "INVALID_JSON",
+                "VALIDATION_ERROR",
+                "ISBN_REQUIRED",
+                "ISBN_FORMAT_INVALID",
+                "ISBN_CHECKSUM_INVALID",
+                "BOOK_QUERY_INVALID",
+                "BOOK_NOT_FOUND",
+                "BOOK_PROVIDER_TIMEOUT",
+                "BOOK_PROVIDER_UNAVAILABLE",
+                "BOOK_PROVIDER_RESPONSE_INVALID",
+                "EDITION_REQUIRED",
+                "SOURCE_NOT_ALLOWED",
+                "STORE_TIMEOUT",
+                "STORE_UNAVAILABLE",
+                "STORE_RESPONSE_INVALID",
+                "OFFER_URL_REJECTED",
+                "OFFER_EDITION_MISMATCH",
+                "OFFER_PRICE_INVALID",
+                "OFFER_CURRENCY_UNSUPPORTED",
+                "OFFER_NORMALIZATION_FAILED",
+                "JOB_NOT_FOUND",
+                "JOB_TERMINAL",
+                "JOB_INVALID_TRANSITION",
+                "IDEMPOTENCY_KEY_REUSED",
+                "STORAGE_ERROR",
+                "APP_RESTARTED",
+                "INTERNAL_ERROR"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "field": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "details": {
+              "type": "object"
+            }
+          }
+        },
+        "request_id": {
+          "$ref": "#/$defs/requestId",
+          "description": "Присутствует, если request_id удалось извлечь из JSON envelope."
+        }
+      }
+    },
+    "responseByCommand": {
+      "description": "Успешный ответ использует successEnvelope. Ошибка любой операции использует errorEnvelope.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/successEnvelope"
+        },
+        {
+          "$ref": "#/$defs/errorEnvelope"
+        }
+      ]
+    },
+    "jobState": {
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "VALIDATING",
+        "RESOLVING_BOOK",
+        "FETCHING_OFFERS",
+        "NORMALIZING",
+        "SUCCEEDED",
+        "PARTIAL",
+        "NO_RESULTS",
+        "FAILED",
+        "CANCELLED",
+        "TIMED_OUT"
+      ]
+    },
+    "bookCandidate": {
+      "type": "object",
+      "required": [
+        "edition_id",
+        "title",
+        "authors",
+        "match_reason"
+      ],
+      "properties": {
+        "edition_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isbn13": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{13}$"
+        },
+        "publisher": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publication_year": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "match_reason": {
+          "type": "string"
+        }
+      }
+    },
+    "offer": {
+      "type": "object",
+      "required": [
+        "source_id",
+        "title",
+        "price_minor",
+        "currency",
+        "availability",
+        "product_url",
+        "fetched_at"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "isbn13": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "price_minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "const": "RUB"
+        },
+        "delivery_minor": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "availability": {
+          "type": "string"
+        },
+        "product_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "fetched_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "required": [
+        "job_id",
+        "state",
+        "created_at",
+        "updated_at",
+        "source_results",
+        "offers"
+      ],
+      "properties": {
+        "job_id": {
+          "$ref": "#/$defs/jobId"
+        },
+        "parent_job_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/jobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/jobState"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source_id",
+              "status"
+            ],
+            "properties": {
+              "source_id": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "success",
+                  "error",
+                  "timeout"
+                ]
+              },
+              "error_code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "offers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/offer"
+          }
+        }
+      }
+    },
+    "booksFindResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/successEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "candidates"
+              ],
+              "properties": {
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/bookCandidate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "jobResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/successEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "job"
+              ],
+              "properties": {
+                "job": {
+                  "$ref": "#/$defs/job"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "retryResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/successEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "new_job"
+              ],
+              "properties": {
+                "new_job": {
+                  "$ref": "#/$defs/job"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-cli-exit-codes": {
+    "0": "success",
+    "2": "validation/input error",
+    "3": "not found",
+    "4": "state/idempotency conflict",
+    "5": "timeout",
+    "6": "external dependency unavailable",
+    "7": "storage/internal error",
+    "130": "user cancellation"
+  },
+  "x-command-responses": {
+    "books.find": "200-equivalent: data.candidates; errors: VALIDATION_ERROR, BOOK_QUERY_INVALID, BOOK_NOT_FOUND, BOOK_PROVIDER_TIMEOUT, BOOK_PROVIDER_UNAVAILABLE, BOOK_PROVIDER_RESPONSE_INVALID",
+    "jobs.create": "200-equivalent: data.job; repeated request_key returns same job_id and replayed=true; errors: validation, ISBN_*, STORAGE_ERROR, IDEMPOTENCY_KEY_REUSED; same request_key with different payload: IDEMPOTENCY_KEY_REUSED; malformed/unknown/oversized command rejected before Job creation",
+    "jobs.get": "200-equivalent: data.job; errors: JOB_NOT_FOUND, STORAGE_ERROR",
+    "jobs.cancel": "200-equivalent: data.job; errors: JOB_NOT_FOUND, JOB_TERMINAL, JOB_INVALID_TRANSITION, STORAGE_ERROR",
+    "jobs.retry": "200-equivalent: data.new_job with parent_job_id; errors: JOB_NOT_FOUND, IDEMPOTENCY_KEY_REUSED, STORAGE_ERROR"
+  },
+  "x-response-schemas": {
+    "books.find": "#/$defs/booksFindResponse",
+    "jobs.create": "#/$defs/jobResponse",
+    "jobs.get": "#/$defs/jobResponse",
+    "jobs.cancel": "#/$defs/jobResponse",
+    "jobs.retry": "#/$defs/retryResponse",
+    "all-errors": "#/$defs/errorEnvelope"
+  },
+  "x-cli-protocol-limits": {
+    "max_command_bytes": 16384,
+    "max_json_nesting_depth": 8,
+    "title_max_length": 300,
+    "author_max_length": 200,
+    "isbn_max_length": 17,
+    "description": "Transport/parser limits are enforced by CLI adapter before schema validation. Field limits are enforced by JSON Schema."
+  },
+  "x-cli-error-semantics": {
+    "INVALID_JSON": "Malformed JSON; no Job is created.",
+    "UNKNOWN_COMMAND": "Unknown command name; field=command; no Job is created.",
+    "VALIDATION_ERROR": "Schema/field validation error; field is JSON path; details.violations contains path, rule, expected and actual.",
+    "REQUEST_TOO_LARGE": "Command exceeds max_command_bytes or max_json_nesting_depth; no Job is created.",
+    "IDEMPOTENCY_KEY_REUSED": "Same request_key was used with a different normalized payload; no new Job is created.",
+    "JOB_NOT_FOUND": "Job is absent from current OS-user local profile; response does not disclose other profiles.",
+    "APP_RESTARTED": "Recovery terminalized a non-terminal Job after unclean application shutdown."
+  }
+}
