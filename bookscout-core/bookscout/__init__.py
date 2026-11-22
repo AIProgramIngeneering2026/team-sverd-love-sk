@@ -1,0 +1,1 @@
+"""BookScout application core skeleton."""
