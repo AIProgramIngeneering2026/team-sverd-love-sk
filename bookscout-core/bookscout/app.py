@@ -7,7 +7,7 @@ from bookscout.tools.builtin import (
 )
 
 
-def build_dispatcher():
+def build_dispatcher(repository=None, *, recover_interrupted=True):
     registry = ToolRegistry()
     for tool in (ValidateIsbnTool(), ResolveBookTool(),
                  SearchStoreOffersTool(), NormalizeOffersTool()):
@@ -15,7 +15,7 @@ def build_dispatcher():
     # Workflow is configuration; Dispatcher has no concrete Tool names.
     registry.register_workflow("books.search", [
         PipelineStep("validate_isbn", JobState.VALIDATING,
-                     lambda d: {"isbn": d.get("isbn")}, JobState.RESOLVING_BOOK),
+                     lambda d: dict(d), JobState.RESOLVING_BOOK),
         PipelineStep("resolve_book", JobState.RESOLVING_BOOK,
                      lambda d: {"isbn13": d["validate_isbn"]["isbn13"]},
                      JobState.FETCHING_OFFERS),
@@ -29,7 +29,8 @@ def build_dispatcher():
                          "source_results": d["search_store_offers"]["source_results"]},
                      success_state=None),
     ])
-    return Dispatcher(registry, InMemoryJobRepository())
+    return Dispatcher(registry, repository or InMemoryJobRepository(),
+                      recover_interrupted=recover_interrupted)
 
 
 def main():

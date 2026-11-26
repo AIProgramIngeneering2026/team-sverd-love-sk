@@ -30,3 +30,7 @@ class ToolContractViolation(BookScoutError):
 
 class JobNotFound(BookScoutError):
     code = "job_not_found"
+
+
+class IdempotencyConflict(BookScoutError):
+    code = "idempotency_key_reused"
