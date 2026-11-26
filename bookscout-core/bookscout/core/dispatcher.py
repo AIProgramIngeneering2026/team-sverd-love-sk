@@ -18,11 +18,19 @@ class Dispatcher:
         self.deadline_seconds = deadline_seconds
         if recover_interrupted:
             for job in self.jobs.list_all():
+                previous_state = job.state
                 job.recover_after_restart()
+                if job.state != previous_state:
+                    self.jobs.save(job)
 
     def dispatch(self, operation: str, payload: dict[str, Any], *,
-                 request_id: str | None = None) -> Job:
+                 request_id: str | None = None, idempotency_key: str | None = None,
+                 request_hash: str | None = None) -> Job:
         request_id = request_id or str(uuid4())
+        if idempotency_key is not None:
+            existing = self.jobs.get_by_idempotency_key(idempotency_key, request_hash or "")
+            if existing is not None:
+                return existing
         steps = self.registry.get_workflow(operation)
 
         # Validate public input before creating/persisting a Job.
@@ -30,8 +38,11 @@ class Dispatcher:
         self.registry.validate_input(steps[0].operation, first_input)
 
         job = Job(request_id=request_id)
-        self.jobs.add(job)
+        job, created = self.jobs.create_or_get(job, idempotency_key, request_hash)
+        if not created:
+            return job
         job.transition(steps[0].state)
+        self.jobs.save(job)
         context = ToolContext(
             job_id=job.id,
             request_id=request_id,
@@ -69,7 +80,7 @@ class Dispatcher:
             except Exception as exc:
                 result = ToolResult(error=ToolError(
                     code="INTERNAL_ERROR",
-                    message=f"Внутренняя ошибка Tool {tool.name}: {type(exc).__name__}",
+                    message="Внутренняя ошибка инструмента",
                 ))
 
             # Cancellation or another terminal outcome wins over a late Tool response.
@@ -81,12 +92,15 @@ class Dispatcher:
                 if error.code == "STORE_TIMEOUT" and step.timeout_state is not None:
                     job.transition(step.timeout_state, error_code=error.code,
                                    error_message=error.message)
+                    self.jobs.save(job)
                 else:
                     job.transition(step.failure_state, error_code=error.code,
                                    error_message=error.message)
+                    self.jobs.save(job)
                     if step.failure_state == JobState.NORMALIZING:
                         job.transition(JobState.FAILED, error_code=error.code,
                                        error_message=error.message)
+                        self.jobs.save(job)
                 return job
 
             data[step.operation] = result.value
@@ -99,9 +113,11 @@ class Dispatcher:
                 ) and step.timeout_state is not None):
                     job.transition(step.timeout_state, error_code="STORE_TIMEOUT",
                                    error_message="Все источники превысили timeout")
+                    self.jobs.save(job)
                     return job
             if step.success_state is not None:
                 job.transition(step.success_state)
+                self.jobs.save(job)
 
         normalized = data[steps[-1].operation]
         outcome = normalized.get("job_outcome", "SUCCEEDED")
@@ -109,7 +125,11 @@ class Dispatcher:
         if terminal not in {JobState.SUCCEEDED, JobState.PARTIAL,
                             JobState.NO_RESULTS, JobState.FAILED}:
             raise ToolContractViolation(f"Недопустимый итог Job: {outcome}")
-        job.transition(terminal, result=normalized)
+        failure = normalized.get("failure") or {}
+        job.transition(terminal, result=normalized,
+                       error_code=failure.get("code"),
+                       error_message=failure.get("message"))
+        self.jobs.save(job)
         return job
 
     def get_job(self, job_id: str) -> Job:
@@ -121,4 +141,5 @@ class Dispatcher:
     def cancel(self, job_id: str) -> Job:
         job = self.get_job(job_id)
         job.cancel()
+        self.jobs.save(job)
         return job

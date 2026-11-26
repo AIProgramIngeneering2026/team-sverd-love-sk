@@ -87,6 +87,7 @@ class InMemoryStoreAdapter:
 
 class SearchStoreOffersTool:
     name = "search_store_offers"
+    MAX_OFFERS_PER_JOB = 1000
     version = "1.0"
     input_schema = {
         "type": "object", "required": ["edition"],
@@ -109,18 +110,22 @@ class SearchStoreOffersTool:
             try:
                 raw = adapter.search(edition, context)
                 bad_items = []
+                truncated = False
                 for index, offer in enumerate(raw):
                     if self._valid_offer(offer, edition):
-                        offers.append(offer)
+                        if len(offers) < self.MAX_OFFERS_PER_JOB:
+                            offers.append(offer)
+                        else:
+                            truncated = True
                     else:
                         bad_items.append(index)
                 if bad_items:
                     source_results.append({"source_id": adapter.source_id,
                         "status": "error", "error_code": "STORE_RESPONSE_INVALID",
-                        "invalid_item_indexes": bad_items})
+                        "invalid_item_indexes": bad_items, "truncated": truncated})
                 else:
                     source_results.append({"source_id": adapter.source_id,
-                        "status": "success", "error_code": None})
+                        "status": "success", "error_code": None, "truncated": truncated})
             except TimeoutError:
                 source_results.append({"source_id": adapter.source_id,
                     "status": "timeout", "error_code": "STORE_TIMEOUT"})
@@ -169,5 +174,10 @@ class NormalizeOffersTool:
             outcome = "TIMED_OUT"
         else:
             outcome = "FAILED"
-        return ToolResult(value={"offers": offers, "source_results": sources,
-                                 "job_outcome": outcome})
+        value = {"offers": offers, "source_results": sources, "job_outcome": outcome}
+        if outcome == "FAILED":
+            value["failure"] = {
+                "code": "STORE_SOURCES_FAILED",
+                "message": "Источники не вернули пригодных предложений",
+            }
+        return ToolResult(value=value)
